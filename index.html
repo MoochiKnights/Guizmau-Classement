@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Classement des serveurs Discord où Guizmau est le plus heureux.">
+  <title>Guizmau — Classement du bonheur</title>
+  <style>
+    :root { color-scheme: dark; --bg:#15131d; --panel:#211d2b; --text:#f7f1ff; --muted:#b9aec9; --accent:#f6c96d; --line:#3a3348; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at top,#352744 0,var(--bg) 54%); color:var(--text); font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; }
+    main { max-width:900px; margin:0 auto; padding:48px 18px 60px; }
+    header { text-align:center; margin:0 0 28px; }
+    .cat { font-size:52px; line-height:1.1; }
+    h1 { margin:10px 0 8px; font-size:clamp(30px,5vw,44px); }
+    .intro { color:var(--muted); margin:0 auto; max-width:600px; }
+    .panel { background:rgba(33,29,43,.94); border:1px solid var(--line); border-radius:20px; overflow:hidden; box-shadow:0 18px 50px #0003; }
+    .toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding:18px 20px; border-bottom:1px solid var(--line); }
+    .toolbar strong { font-size:18px; }
+    button { border:1px solid #655673; background:#352b45; color:var(--text); border-radius:10px; padding:9px 13px; font:inherit; cursor:pointer; }
+    button:hover { border-color:var(--accent); }
+    #status { color:var(--muted); font-size:14px; padding:18px 20px; }
+    .table-wrap { overflow-x:auto; }
+    table { border-collapse:collapse; width:100%; min-width:540px; }
+    th,td { padding:15px 18px; text-align:left; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); font-size:13px; text-transform:uppercase; letter-spacing:.06em; }
+    tbody tr:last-child td { border-bottom:0; }
+    .rank { width:80px; font-weight:800; color:var(--accent); }
+    .server { font-weight:700; overflow-wrap:anywhere; }
+    .score { font-variant-numeric:tabular-nums; white-space:nowrap; font-weight:700; }
+    .bar { height:8px; margin-top:7px; background:#40384e; border-radius:99px; overflow:hidden; }
+    .fill { height:100%; background:linear-gradient(90deg,#f6a76d,#f6d66d); border-radius:99px; }
+    footer { text-align:center; color:var(--muted); font-size:13px; margin-top:18px; }
+    .error { color:#ffb7b7; }
+    @media(max-width:600px) { main { padding-top:30px; } th,td { padding:12px; } .rank { width:55px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="cat" aria-hidden="true">🐈</div>
+      <h1>Le classement de Guizmau</h1>
+      <p class="intro">Quel serveur prend le mieux soin de Guizmau ? Son bonheur commence à 50 points, peut augmenter sans limite et diminue d’un point toutes les 6 heures sans interaction de soin.</p>
+    </header>
+    <section class="panel" aria-label="Classement du bonheur de Guizmau par serveur">
+      <div class="toolbar"><strong>🏆 Serveurs les plus chaleureux</strong><button id="refresh" type="button">Actualiser</button></div>
+      <div id="status" role="status">Chargement du classement…</div>
+      <div class="table-wrap"><table><thead><tr><th>Rang</th><th>Serveur</th><th>Bonheur (points)</th></tr></thead><tbody id="ranking"></tbody></table></div>
+    </section>
+    <footer>Le classement affiche le nom du serveur Discord et le bonheur de Guizmau, sans plafond supérieur. Sans interaction de soin pendant 6 heures, Guizmau perd 1 point (minimum : 0). La barre compare le score aux autres serveurs affichés. Aucun message ni identifiant de membre n’est publié.</footer>
+  </main>
+  <script>
+    // Remplace ces valeurs avant de publier le site.
+    // Ne colle JAMAIS la clé secrète/service_role du bot dans cette page !
+    const SUPABASE_URL = https://zchsdyayfcwdphhbzdfm.supabase.co;
+    const SUPABASE_PUBLIC_KEY = sb_publishable_-wP_ADTE8wI8g9YAJTe0tQ_grMbUmad;
+    const statusElement = document.getElementById('status');
+    const rankingElement = document.getElementById('ranking');
+    const refreshButton = document.getElementById('refresh');
+
+    function makeCell(text, className) {
+      const element = document.createElement('td');
+      if (className) element.className = className;
+      element.textContent = text;
+      return element;
+    }
+
+    async function loadRanking() {
+      refreshButton.disabled = true;
+      statusElement.className = '';
+      statusElement.textContent = 'Chargement du classement…';
+      rankingElement.replaceChildren();
+      if (SUPABASE_URL.includes('TON-PROJET') || SUPABASE_PUBLIC_KEY.includes('COLLE_ICI')) {
+        statusElement.textContent = 'Le site n’est pas encore configuré : renseigne les deux valeurs Supabase dans le code de cette page.';
+        refreshButton.disabled = false;
+        return;
+      }
+      try {
+        const url = `${SUPABASE_URL}/rest/v1/server_cats?select=guild_name,happiness,updated_at&order=happiness.desc,updated_at.asc&limit=100`;
+        const response = await fetch(url, { headers: { apikey: SUPABASE_PUBLIC_KEY, Authorization: `Bearer ${SUPABASE_PUBLIC_KEY}` } });
+        if (!response.ok) throw new Error(`Réponse Supabase : ${response.status}`);
+        const rows = await response.json();
+        if (!Array.isArray(rows) || rows.length === 0) {
+          statusElement.textContent = 'Pas encore de serveur dans le classement. Assure-toi que le bot fonctionne et que les identifiants Supabase sont corrects.';
+          return;
+        }
+        const scores = rows.map(row => Math.max(0, Number(row.happiness) || 0));
+        const highestScore = Math.max(1, ...scores);
+        rows.forEach((row, index) => {
+          const tr = document.createElement('tr');
+          tr.appendChild(makeCell(index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`, 'rank'));
+          tr.appendChild(makeCell(row.guild_name || 'Serveur sans nom', 'server'));
+          const scoreCell = document.createElement('td');
+          const score = scores[index];
+          const scoreText = document.createElement('div');
+          scoreText.className = 'score';
+          scoreText.textContent = `❤️ ${score.toLocaleString('fr-FR')} points`; 
+          const bar = document.createElement('div');
+          bar.className = 'bar';
+          const fill = document.createElement('div');
+          fill.className = 'fill';
+          fill.style.width = `${(score / highestScore) * 100}%`;
+          bar.title = 'Barre proportionnelle au serveur en tête du classement';
+          bar.appendChild(fill);
+          scoreCell.append(scoreText, bar);
+          tr.appendChild(scoreCell);
+          rankingElement.appendChild(tr);
+        });
+        statusElement.textContent = `${rows.length} serveur(s) affiché(s). Le classement se met à jour quand le bonheur de Guizmau change.`;
+      } catch (error) {
+        console.error(error);
+        statusElement.className = 'error';
+        statusElement.textContent = 'Impossible de charger le classement. Vérifie la configuration Supabase, la politique de lecture publique et ta connexion.';
+      } finally {
+        refreshButton.disabled = false;
+      }
+    }
+    refreshButton.addEventListener('click', loadRanking);
+    loadRanking();
+  </script>
+</body>
+</html>
